@@ -45,12 +45,18 @@ class MolecularGraph(nx.Graph):
         self.connection_check()
         # Randomly add bonds between nodes
         self.add_bonds()
-        # Add hydrogens
-        bonding.fill_hydrogens(self)
+        # Add hydrogens if they're not explicitly provided
+        if "H" not in self.atom_dict:
+            bonding.fill_hydrogens(self)
         size = len(self)
         self.coords = nx.spring_layout(self, k=0.2, dim=3, iterations=100, scale=size / 5.5, weight="weight")
 
     def __copy__(self):
+        """
+        Copy method for MolecularGraph. This gets called by the networkx connected subgraphs
+        function, and will break if it doesn't exist.
+        :return:
+        """
         return MolecularGraph(self.atom_dict)
 
     def connection_check(self):
@@ -81,18 +87,29 @@ class MolecularGraph(nx.Graph):
         to loop over each node, and assign a random number of maximum bonds
         it is allowed to have.
         """
+        atom_maxes = {
+            "C": 4,
+            "O": 3,
+            "S": 4,
+            "N": 4,
+        }
         for nodeA in self.nodes:
-            neighbors = list(nx.neighbors(self, nodeA))
-            nodeA_sum, neighbor_sum = bonding.node_sums(self, nodeA)
-            norm_weights = bonding.inverse_weighting(neighbor_sum)
-            max_bonds = np.random.randint(1, 4)
-            # This condition is fulfilled when we have bonds to add and
-            # have neighbors that can accept bonds
-            while nodeA_sum < max_bonds and np.sum(norm_weights) != 0:
-                nodeB = np.random.choice(neighbors, p=norm_weights)
-                self[nodeA][nodeB]["weight"] += 1.
+            # Ignore hydrogens
+            if "H" not in nodeA:
+                atom = nodeA[0]
+                neighbors = list(nx.neighbors(self, nodeA))
                 nodeA_sum, neighbor_sum = bonding.node_sums(self, nodeA)
                 norm_weights = bonding.inverse_weighting(neighbor_sum)
+                # Set a random number of bonds, with the limit being
+                # set by the atom type.
+                max_bonds = np.random.randint(1, atom_maxes[atom])
+                # This condition is fulfilled when we have bonds to add and
+                # have neighbors that can accept bonds
+                while nodeA_sum < max_bonds and np.sum(norm_weights) != 0:
+                    nodeB = np.random.choice(neighbors, p=norm_weights)
+                    self[nodeA][nodeB]["weight"] += 1.
+                    nodeA_sum, neighbor_sum = bonding.node_sums(self, nodeA)
+                    norm_weights = bonding.inverse_weighting(neighbor_sum)
 
     def graph2xyz(self, filepath, comment):
         """
