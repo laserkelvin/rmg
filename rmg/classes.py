@@ -4,14 +4,15 @@ import numpy as np
 from itertools import combinations
 from dataclasses import dataclass
 from tqdm.autonotebook import tqdm
+import os
 
 from rmg import bonding
 from rmg import utils
 
 
 class MolecularGraph(nx.Graph):
-    def __init__(self, atom_dict):
-        super(MolecularGraph).__init__(self)
+    def __init__(self, atom_dict=dict()):
+        super(MolecularGraph, self).__init__()
         # Use the current time in milliseconds as a random number seed
         node_list = list()
         np.random.seed(None)
@@ -52,7 +53,7 @@ class MolecularGraph(nx.Graph):
         inverse to the number of bonds it has.
         """
         if nx.is_connected(self) is False:
-            subgraphs = list(nx.connected_component_subgraphs(self))
+            subgraphs = list(nx.connected_component_subgraphs(self, copy=False))
             # Loop over combinations of subgraphs - this makes it general
             # if there are more than two subgraphs
             for sub_pair in combinations(subgraphs, 2):
@@ -82,7 +83,7 @@ class MolecularGraph(nx.Graph):
             # have neighbors that can accept bonds
             while nodeA_sum < max_bonds and np.sum(norm_weights) != 0:
                 nodeB = np.random.choice(neighbors, p=norm_weights)
-                self.nodes[nodeA][nodeB]["weight"] += 1.
+                self[nodeA][nodeB]["weight"] += 1.
                 nodeA_sum, neighbor_sum = bonding.node_sums(self, nodeA)
                 norm_weights = bonding.inverse_weighting(neighbor_sum)
 
@@ -142,6 +143,8 @@ class Batch:
         Dump the molecular graphs to a root directory.
         :param root: str path to a root directory for dumping
         """
+        if os.path.isdir(root) is False:
+            os.mkdir(root)
         for index, graph in tqdm(enumerate(self.graphs)):
             dest = os.path.join(root, "{}.xyz".format(index))
             graph.graph2xyz(
