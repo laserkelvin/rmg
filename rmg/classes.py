@@ -11,9 +11,13 @@ from rmg import utils
 
 
 class MolecularGraph(nx.Graph):
-    def __init__(self, atom_dict=dict()):
+    def __init__(self):
+        super(MolecularGraph, self).__init__()
+
+    def init_graph(self, atom_dict):
         super(MolecularGraph, self).__init__()
         # Use the current time in milliseconds as a random number seed
+        self.atom_dict = atom_dict
         node_list = list()
         np.random.seed(None)
         for symbol, quantity in atom_dict.items():
@@ -46,6 +50,9 @@ class MolecularGraph(nx.Graph):
         size = len(self)
         self.coords = nx.spring_layout(self, k=0.2, dim=3, iterations=100, scale=size / 5.5, weight="weight")
 
+    def __copy__(self):
+        return MolecularGraph(self.atom_dict)
+
     def connection_check(self):
         """
         Check if a graph is disconnected, and if it is, add edges between
@@ -53,7 +60,7 @@ class MolecularGraph(nx.Graph):
         inverse to the number of bonds it has.
         """
         if nx.is_connected(self) is False:
-            subgraphs = list(nx.connected_component_subgraphs(self, copy=False))
+            subgraphs = list(nx.connected_component_subgraphs(self, copy=True))
             # Loop over combinations of subgraphs - this makes it general
             # if there are more than two subgraphs
             for sub_pair in combinations(subgraphs, 2):
@@ -119,7 +126,8 @@ class Batch:
             # running until either the requested number of graphs are
             # created, or if we've exceeded the maximum number of iterations
             while index < self.ngraphs and iterations < self.max_iter:
-                graph = MolecularGraph(self.atom_dict)
+                graph = MolecularGraph()
+                graph.init_graph(self.atom_dict)
                 if graph not in self.graphs:
                     self.graphs.append(graph)
                     index += 1
