@@ -16,7 +16,7 @@ def time2seed():
     return seed
 
 
-def save_obj(obj, filepat, **kwargs):
+def save_obj(obj, filepath, **kwargs):
     settings = {
         "compress": ("gzip", 6)
     }
