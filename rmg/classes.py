@@ -145,7 +145,7 @@ class Batch:
             while index < self.ngraphs and iterations < self.max_iter:
                 graph = MolecularGraph()
                 graph.init_graph(self.atom_dict)
-                if graph not in self.graphs:
+                if any([graph == exist for exist in self.graphs]) is False:
                     self.graphs.append(graph)
                     index += 1
                 iterations += 1
