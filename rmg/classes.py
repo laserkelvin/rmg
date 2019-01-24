@@ -48,8 +48,7 @@ class MolecularGraph(nx.Graph):
         # Add hydrogens if they're not explicitly provided
         if "H" not in self.atom_dict:
             bonding.fill_hydrogens(self)
-        size = len(self)
-        self.coords = nx.spring_layout(self, k=0.2, dim=3, iterations=100, scale=size / 5.5, weight="weight")
+        self.generate_coords()
 
     def __copy__(self):
         """
@@ -121,6 +120,34 @@ class MolecularGraph(nx.Graph):
         xyz = bonding.pos2xyz(self.coords, comment)
         with open(filepath, "w+") as write_file:
             write_file.write(xyz)
+
+    def generate_coords(self):
+        # This defines some typical C-C bond lengths depending
+        # on the bond order
+        bond_orders = {
+            1: 1.44,
+            2: 1.35,
+            3: 1.26
+        }
+        coords = nx.spring_layout(self, k=0.2, dim=3, iterations=100, scale=len(self) / 5.5, weight="weight")
+        com = bonding.centerofmass(coords)
+        coords = {key: coord - com for key, coord in coords.items()}
+        for nodeA in self.nodes:
+            neighbors = nx.neighbors(self, nodeA)
+            for nodeB in neighbors:
+                if "H" in nodeB:
+                    dist = 0.98
+                else:
+                    dist = bond_orders[
+                        int(self[nodeA][nodeB]["weight"])
+                    ]
+                new_coord = bonding.new_length(
+                    coords[nodeA],
+                    coords[nodeB],
+                    dist
+                )
+                #coords[nodeB] = new_coord
+        self.coords = coords
 
 
 @dataclass
