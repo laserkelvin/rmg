@@ -48,7 +48,7 @@ class MolecularGraph(nx.Graph):
         # Add hydrogens if they're not explicitly provided
         if "H" not in self.atom_dict:
             bonding.fill_hydrogens(self)
-        self.generate_coords()
+        self.generate_coords(verbose=True)
 
     def __copy__(self):
         """
@@ -121,33 +121,52 @@ class MolecularGraph(nx.Graph):
         with open(filepath, "w+") as write_file:
             write_file.write(xyz)
 
-    def generate_coords(self):
-        # This defines some typical C-C bond lengths depending
-        # on the bond order
-        bond_orders = {
-            1: 1.44,
-            2: 1.35,
-            3: 1.26
-        }
+    def generate_coords(self, max_it=2000, delta=1e-4, verbose=False):
+        # generate the initial coordinates
         coords = nx.spring_layout(self, k=0.2, dim=3, iterations=100, scale=len(self) / 5.5, weight="weight")
+        self.optimize_coords(coords, max_it, delta, verbose)
         com = bonding.centerofmass(coords)
         coords = {key: coord - com for key, coord in coords.items()}
-        for nodeA in self.nodes:
-            neighbors = nx.neighbors(self, nodeA)
-            for nodeB in neighbors:
-                if "H" in nodeB:
-                    dist = 0.98
-                else:
-                    dist = bond_orders[
-                        int(self[nodeA][nodeB]["weight"])
-                    ]
-                new_coord = bonding.new_length(
-                    coords[nodeA],
-                    coords[nodeB],
-                    dist
-                )
-                #coords[nodeB] = new_coord
         self.coords = coords
+
+    def optimize_coords(self, coords, max_it=100, delta=1e-4, verbose=True):
+        """
+        Optimize the coordinates following the approximate generation with nx.spring_layout.
+        This implements a rudimentary Newton-Raphson optimization of the coordinates, based on
+        harmonic spring energies that connect
+        :param coords:
+        :param max_it:
+        :param delta:
+        :param verbose:
+        :return:
+        """
+        iteration = 0
+        converged = False
+        node_list = list(self.nodes)
+        while iteration < max_it and converged is False:
+            # Calculate the energy and force at the current coordinates
+            props = np.array([bonding.node_energy_force(node, self, coords) for node in node_list])
+            # Convert the dict into a numpy array
+            coord_array = np.array([coords[node] for node in node_list])
+            # Take a step
+            coord_array = coord_array - np.array([(props[:, 0] / props[:, 1]), ]*3).T
+            # Convert back into a dict
+            coords = {node: coord_array[index] for index, node in enumerate(node_list)}
+            # Calculate the energy and force at the new coordinates
+            new_props = np.array([bonding.node_energy_force(node, self, coords) for node in node_list])
+            # Check if the change in energy is small enough for convergence
+            delta_E = np.abs(np.mean(props[:, 0] - new_props[:, 1]))
+            if verbose is True:
+                print(
+                    "Iteration: {}, Mean energy: {}, Mean force: {}, Change in energy: {}".format(
+                    iteration, np.mean(props[:, 0]), np.mean(props[:, 1]), delta_E
+                    )
+                )
+            if delta_E <= delta:
+                converged = True
+            iteration += 1
+        new_coords = {node: coord_array[index] for index, node in enumerate(node_list)}
+        self.coords = new_coords
 
 
 @dataclass
