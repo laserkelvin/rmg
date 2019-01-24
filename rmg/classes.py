@@ -88,9 +88,9 @@ class MolecularGraph(nx.Graph):
         """
         atom_maxes = {
             "C": 4,
-            "O": 3,
-            "S": 4,
-            "N": 4,
+            "O": 2,
+            "S": 3,
+            "N": 3,
         }
         for nodeA in self.nodes:
             # Ignore hydrogens
@@ -164,6 +164,7 @@ class Batch:
             self.max_iter = self.ngraphs + 100
         index = 0
         iterations = 0
+        redundant = 0
         # Progress bar to show that structures are being generated
         with tqdm(total=self.max_iter) as pbar:
             # While loop will ensure that the generator keeps
@@ -172,12 +173,15 @@ class Batch:
             while index < self.ngraphs and iterations < self.max_iter:
                 graph = MolecularGraph()
                 graph.init_graph(self.atom_dict)
-                if graph not in self.graphs:
+                if any([graph == exist for exist in self.graphs]) is False:
                     self.graphs.append(graph)
                     index += 1
+                else:
+                    redundant += 1
                 iterations += 1
                 pbar.update(1)
         print("Generated {} graphs.".format(len(self)))
+        print("{} of them were redundant.".format(redundant))
 
     def __len__(self):
         return len(self.graphs)
