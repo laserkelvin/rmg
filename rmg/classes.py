@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import os
 
 from tqdm.autonotebook import tqdm
+from joblib import Parallel, delayed
 from scipy.optimize import minimize
 import networkx as nx
 import numpy as np
@@ -200,37 +201,46 @@ class MolecularGraph(nx.Graph):
 @dataclass
 class Batch:
     atom_dict: dict
-    ngraphs: int
-    max_iter: int = 1000
+    niter: int
+    processes: int = 1
 
     def __post_init__(self):
+        self.counter = 0
+        self.redundant = 0
         self.graphs = list()
-        # Make sure we do more iterations than the specified
-        # number of graphs
-        if self.ngraphs > self.max_iter:
-            self.max_iter = self.ngraphs + 100
+        self.parallel = Parallel(n_jobs=self.processes, prefer="threads")
+
+    def _graph_gen(self, arg):
+        """
+        Private method for generating MolecularGraphs. The idea is to wrap
+        this method with a parallel worker to allow concurrent generation.
+        :return: MolecularGraph object
+        """
+        pbar, atom_dict, kwargs = arg
+        graph = MolecularGraph()
+        graph.init_graph(atom_dict, **kwargs)
+        pbar.update(1)
+        return graph
 
     def generate_graphs(self, **kwargs):
         # Progress bar to show that structures are being generated
-        index = 0
-        iterations = 0
-        redundant = 0
-        with tqdm(total=self.max_iter) as pbar:
+        self.counter = 0
+        self.redundant = 0
+        with tqdm(total=self.niter) as pbar:
             # While loop will ensure that the generator keeps
             # running until either the requested number of graphs are
             # created, or if we've exceeded the maximum number of iterations
-            while index < self.ngraphs and iterations < self.max_iter:
-                graph = MolecularGraph()
-                graph.init_graph(self.atom_dict, **kwargs)
-                if any([graph == exist for exist in self.graphs]) is False:
-                    self.graphs.append(graph)
-                    index += 1
-                else:
-                    redundant += 1
-                iterations += 1
-                pbar.update(1)
-        print("Generated {} graphs.".format(len(self)))
-        print("{} of them were redundant.".format(redundant))
+            graphs = self.parallel(
+                delayed(self._graph_gen)(
+                    (pbar, self.atom_dict, kwargs)
+                ) for _ in range(self.niter)
+            )
+        print("Generated {} graphs.".format(len(graphs)))
+        # Take the unique graphs. This is necessary because with multiprocessing there is a
+        # race condition for determining what graphs have already been generated
+        _ = [self.graphs.append(graph) for graph in graphs if graph not in self.graphs]
+        print("Generated {} non-redundant graphs.".format(len(self)))
+        print("{} of them were redundant.".format(self.niter - len(self.graphs)))
 
     def __len__(self):
         return len(self.graphs)

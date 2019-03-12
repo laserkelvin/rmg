@@ -50,11 +50,9 @@ def babel_convert(infile, outform):
     fileout = Path.with_suffix(".{}".format(outform))
     convert = [
         "obabel",
-        "-i{}".format(filepath.suffix)
+        "-i{}".format(filepath.suffix),
         infile,
         "-o{}".format(outform)
     ]
     with Popen(convert, stdout=fileout) as process:
         process.wait()
-
-def smi2xyz()

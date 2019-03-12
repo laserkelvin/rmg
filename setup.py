@@ -2,8 +2,9 @@ from setuptools import setup
 
 setup(
     name='RMG',
-    version='0.1.0',
+    version='0.2.0',
     packages=['rmg'],
+    install_requires=["joblib", "tqdm", "scipy", "networkx", "numpy"],
     url='',
     license='',
     author='Kelvin Lee',
