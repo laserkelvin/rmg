@@ -37,3 +37,24 @@ def xyz2sdf(xyz_file):
     # sdf file
     with Popen(convert, stdout=fileout) as process:
         process.wait()
+
+
+def babel_convert(infile, outform):
+    """
+    Convert between file formats
+    :param infile:
+    :param outform:
+    :return:
+    """
+    filepath = Path(infile)
+    fileout = Path.with_suffix(".{}".format(outform))
+    convert = [
+        "obabel",
+        "-i{}".format(filepath.suffix)
+        infile,
+        "-o{}".format(outform)
+    ]
+    with Popen(convert, stdout=fileout) as process:
+        process.wait()
+
+def smi2xyz()

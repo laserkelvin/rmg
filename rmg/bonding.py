@@ -135,7 +135,7 @@ def centerofmass(coord_dict):
     return com_coords
 
 
-def harmonic_spring(x, x0=1.42, k=4):
+def harmonic_spring(x, x0=1.42, k=30):
     """
     Calculate the potential energy of
     """
@@ -143,7 +143,7 @@ def harmonic_spring(x, x0=1.42, k=4):
     return 0.5 * k * (dist)**2.
 
 
-def harmonic_deriv(x, x0=1.42, k=4):
+def harmonic_deriv(x, x0=1.42, k=30):
     dist = np.linalg.norm(x - x0)
     return dist * k
 
@@ -153,22 +153,31 @@ def node_energy_force(node, graph, coords):
     Calculate the potential energy and gradient for a given node.
     :param node: key for node that exists in specified graph object
     :param graph: networkx Graph object
-    :param coords: dict with nodes as keys and numpy 1D arrays as values
+    :param coords: numpy 1D array of coordinates, with dimension N,3 (N = number of atoms)
     :return: 2-tuple containing the energy and force
     """
     bonds = {
         1: 1.443,
-        2: 1.345,
+        2: 1.3342,
         3: 1.2652,
     }
+    #coords = np.reshape(coords, (len(graph), 3))
+    node_list = list(graph.nodes)
+    node_index = node_list.index(node)
     neighbors = list(nx.neighbors(graph, node))
     # If atom isn't hydrogen, then we look up the standard distances.
     ideal_dists = [
         bonds[graph[node][neighbor]["weight"]] if "H" not in neighbor else 1.01 for neighbor in neighbors
     ]
     distances = [
-        calc_distance(coords[node], coords[neighbor]) for neighbor in neighbors
+        calc_distance(coords[node_index, :], coords[index, :]) for index, neighbor in enumerate(neighbors)
     ]
     energy = np.sum([harmonic_spring(dist, ideal) for dist, ideal in zip(distances, ideal_dists)])
-    force = np.sum([harmonic_deriv(dist, ideal) for dist, ideal in zip(distances, ideal_dists)])
-    return [energy, force]
+    #force = np.sum([harmonic_deriv(dist, ideal) for dist, ideal in zip(distances, ideal_dists)])
+    return energy
+
+
+def graph_energy(coords, graph):
+    coords = np.reshape(coords, (len(graph), 3))
+    energies = [node_energy_force(node, graph, coords) for node in graph.nodes]
+    return np.sum(energies)

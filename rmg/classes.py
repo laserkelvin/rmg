@@ -1,10 +1,12 @@
 
-import networkx as nx
-import numpy as np
 from itertools import combinations
 from dataclasses import dataclass
-from tqdm.autonotebook import tqdm
 import os
+
+from tqdm.autonotebook import tqdm
+from scipy.optimize import minimize
+import networkx as nx
+import numpy as np
 
 from rmg import bonding
 from rmg import utils
@@ -14,7 +16,7 @@ class MolecularGraph(nx.Graph):
     def __init__(self):
         super(MolecularGraph, self).__init__()
 
-    def init_graph(self, atom_dict):
+    def init_graph(self, atom_dict, **kwargs):
         super(MolecularGraph, self).__init__()
         # Use the current time in milliseconds as a random number seed
         self.atom_dict = atom_dict
@@ -48,7 +50,7 @@ class MolecularGraph(nx.Graph):
         # Add hydrogens if they're not explicitly provided
         if "H" not in self.atom_dict:
             bonding.fill_hydrogens(self)
-        self.generate_coords(verbose=True)
+        self.generate_coords(**kwargs)
 
     def __copy__(self):
         """
@@ -57,6 +59,15 @@ class MolecularGraph(nx.Graph):
         :return:
         """
         return MolecularGraph(self.atom_dict)
+
+    def __eq__(self, other):
+        """
+        Check if another molecular graph is equal to the current one.
+        :param other: MolecularGraph object
+        :return: True if the other graph is isomorphic
+        """
+        weight_check = nx.algorithms.isomorphism.numerical_edge_match("weight", [1, 2, 3, 4])
+        return nx.is_isomorphic(self, other)
 
     def connection_check(self):
         """
@@ -110,6 +121,17 @@ class MolecularGraph(nx.Graph):
                     nodeA_sum, neighbor_sum = bonding.node_sums(self, nodeA)
                     norm_weights = bonding.inverse_weighting(neighbor_sum)
 
+    def get_distances(self, node, coords):
+        """
+        Calculate the distances between a given node and its neighbors
+        :param node: str identifier for node
+        :param coords: dict containing the coordinates for each node
+        :return distances: list with distances between the node and each neighbor
+        """
+        neighbors = nx.neighbors(self, node)
+        distances = [bonding.calc_distance(coords[node], coords[neighbor]) for neighbor in neighbors]
+        return distances
+
     def graph2xyz(self, filepath, comment):
         """
         Export the coordinates of this graph to an XYZ file.
@@ -121,15 +143,30 @@ class MolecularGraph(nx.Graph):
         with open(filepath, "w+") as write_file:
             write_file.write(xyz)
 
-    def generate_coords(self, max_it=2000, delta=1e-4, verbose=False):
+    def generate_coords(self, **kwargs):
         # generate the initial coordinates
-        coords = nx.spring_layout(self, k=0.2, dim=3, iterations=100, scale=len(self) / 5.5, weight="weight")
-        self.optimize_coords(coords, max_it, delta, verbose)
-        com = bonding.centerofmass(coords)
-        coords = {key: coord - com for key, coord in coords.items()}
+        spring_settings = {
+            "k": 1. / np.sqrt(len(self)),
+            "dim": 3,
+            "iterations": 20,
+            "scale": len(self) / 6.,
+            "weight": None
+        }
+        spring_settings.update(kwargs)
+        #success = False
+        #while success is False:
+        coords = nx.spring_layout(self, **spring_settings)
+        #    line_check = list()
+        #    for node in self.nodes:
+        #        distances = self.get_distances(node, coords)
+        #        line_check.append(
+        #            all([0.6 < distance < 1.6 for distance in distances])
+        #        )
+        #    if all(line_check) is True:
+        #        success = True
         self.coords = coords
 
-    def optimize_coords(self, coords, max_it=100, delta=1e-4, verbose=True):
+    def optimize_coords(self, coords):
         """
         Optimize the coordinates following the approximate generation with nx.spring_layout.
         This implements a rudimentary Newton-Raphson optimization of the coordinates, based on
@@ -140,33 +177,24 @@ class MolecularGraph(nx.Graph):
         :param verbose:
         :return:
         """
-        iteration = 0
-        converged = False
-        node_list = list(self.nodes)
-        while iteration < max_it and converged is False:
-            # Calculate the energy and force at the current coordinates
-            props = np.array([bonding.node_energy_force(node, self, coords) for node in node_list])
-            # Convert the dict into a numpy array
-            coord_array = np.array([coords[node] for node in node_list])
-            # Take a step
-            coord_array = coord_array - np.array([(props[:, 0] / props[:, 1]), ]*3).T
-            # Convert back into a dict
-            coords = {node: coord_array[index] for index, node in enumerate(node_list)}
-            # Calculate the energy and force at the new coordinates
-            new_props = np.array([bonding.node_energy_force(node, self, coords) for node in node_list])
-            # Check if the change in energy is small enough for convergence
-            delta_E = np.abs(np.mean(props[:, 0] - new_props[:, 1]))
-            if verbose is True:
-                print(
-                    "Iteration: {}, Mean energy: {}, Mean force: {}, Change in energy: {}".format(
-                    iteration, np.mean(props[:, 0]), np.mean(props[:, 1]), delta_E
-                    )
-                )
-            if delta_E <= delta:
-                converged = True
-            iteration += 1
-        new_coords = {node: coord_array[index] for index, node in enumerate(node_list)}
-        self.coords = new_coords
+        coords = np.array([coords[node] for node in self.nodes])
+        result = minimize(
+            self.graph_energy,
+            #args=(coords),
+            x0=coords,
+            options={"disp": True},
+            method="BFGS",
+        )
+        new_coords = result["x"]
+        new_coords = np.reshape(new_coords, (len(self), 3))
+        new_coords = {node: new_coords[index] for index, node in enumerate(self.nodes)}
+        print(new_coords)
+        return new_coords
+
+    def graph_energy(self, coords):
+        #coords = np.reshape(coords, (len(self), 3))
+        energies = [bonding.node_energy_force(node, self, coords) for node in self.nodes]
+        return np.sum(energies)
 
 
 @dataclass
@@ -181,17 +209,19 @@ class Batch:
         # number of graphs
         if self.ngraphs > self.max_iter:
             self.max_iter = self.ngraphs + 100
+
+    def generate_graphs(self, **kwargs):
+        # Progress bar to show that structures are being generated
         index = 0
         iterations = 0
         redundant = 0
-        # Progress bar to show that structures are being generated
         with tqdm(total=self.max_iter) as pbar:
             # While loop will ensure that the generator keeps
             # running until either the requested number of graphs are
             # created, or if we've exceeded the maximum number of iterations
             while index < self.ngraphs and iterations < self.max_iter:
                 graph = MolecularGraph()
-                graph.init_graph(self.atom_dict)
+                graph.init_graph(self.atom_dict, **kwargs)
                 if any([graph == exist for exist in self.graphs]) is False:
                     self.graphs.append(graph)
                     index += 1
