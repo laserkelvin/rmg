@@ -208,7 +208,6 @@ class Batch:
         self.counter = 0
         self.redundant = 0
         self.graphs = list()
-        self.parallel = Parallel(n_jobs=self.processes, prefer="threads")
 
     def _graph_gen(self, arg):
         """
@@ -227,14 +226,12 @@ class Batch:
         self.counter = 0
         self.redundant = 0
         with tqdm(total=self.niter) as pbar:
-            # While loop will ensure that the generator keeps
-            # running until either the requested number of graphs are
-            # created, or if we've exceeded the maximum number of iterations
-            graphs = self.parallel(
-                delayed(self._graph_gen)(
-                    (pbar, self.atom_dict, kwargs)
-                ) for _ in range(self.niter)
-            )
+            with Parallel(n_jobs=self.processes, prefer="threads") as parallel:
+                graphs = parallel(
+                    delayed(self._graph_gen)(
+                        (pbar, self.atom_dict, kwargs)
+                    ) for _ in range(self.niter)
+                )
         print("Generated {} graphs.".format(len(graphs)))
         # Take the unique graphs. This is necessary because with multiprocessing there is a
         # race condition for determining what graphs have already been generated
