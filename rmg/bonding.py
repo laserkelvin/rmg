@@ -4,7 +4,7 @@ import numpy as np
 import periodictable
 
 
-def fill_hydrogens(graph, max_bonds=4):
+def fill_hydrogens(graph):
     """
     Function to add hydrogens to a molecular graph. Requires the
     connectivity matrix, which is used to calculate the number of
@@ -12,9 +12,15 @@ def fill_hydrogens(graph, max_bonds=4):
     adds hydrogens until the maximum number of bonds is fulfilled.
     """
     h_counter = hydrogen_generator()
+    atom_maxes = {
+        "C": 4,
+        "O": 2,
+        "S": 3,
+        "N": 3,
+    }
     for node in list(graph.nodes):
         nbonds = sum_bonds(graph, node)
-        while nbonds < max_bonds:
+        while nbonds < atom_maxes[node[0]]:
             h_atom = next(h_counter)
             graph.add_node(h_atom)
             graph.add_edge(node, h_atom, weight=3)
